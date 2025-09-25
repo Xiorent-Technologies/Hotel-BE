@@ -17,19 +17,14 @@ const roomAvailabilitySchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['available', 'sold_out', 'blocked'],
+    enum: ['available', 'sold_out'],
     default: 'available'
   },
   availableRooms: {
     type: Number,
     default: 0
   },
-  price: Number, // Dynamic pricing override
-  isBlocked: {
-    type: Boolean,
-    default: false
-  },
-  blockReason: String // maintenance, renovation, etc.
+  price: Number,
 }, {
   timestamps: true
 });

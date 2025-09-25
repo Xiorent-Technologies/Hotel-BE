@@ -79,3 +79,23 @@ export const logOut = async(req,res) => {
         res.status(500).json({message: "Server error"});
     } 
 }
+
+
+export const updateUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const updatedUser = await User.findByIdAndUpdate(id, req.body, {
+      new: true,          
+      runValidators: true 
+    });
+
+    if (!updatedUser) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    res.status(200).json({ success: true, data: updatedUser });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};

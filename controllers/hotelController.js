@@ -45,10 +45,32 @@ export const createHotel = async (req, res) => {
 
 export const getAllHotels = async (req, res) => {
   try {
-
-    const hotels = await Hotel.find().populate("vendorId","name email");
-    res.status(200).json(hotels);
+     const {
+      city,state,country,status,amenities,vendorId
+    } = req.query;
+     
+    const filter = {};
     
+    if(city) filter["location.city"] = new RegExp(`^${city}$`,"i");
+    if(state) filter["location.state"] = new RegExp(`^${state}$`,"i");
+    if(country) filter["location.country"] = new RegExp(`^${country}$`,"i");
+
+    if(vendorId) filter.vendorId = vendorId;
+
+    if(status) filter.status = status;
+
+     if (amenities) {
+      const list = amenities.split(",").map(a => a.trim());
+      filter.amenities = { $all: list };
+    }
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const hotels = await Hotel.find(filter).skip(skip).limit(limit).sort({ createdAt: -1 });
+    return res.status(200).json(hotels);
+
   } catch (error) {
     console.error("Error fetching hotels:", error);
     res.status(500).json({ message: "Server error", error: error.message });

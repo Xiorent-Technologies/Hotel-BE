@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Hotel from "../models/hotelModel.js";
 import Rooms from "../models/RoomModel.js";
 import User from "../models/userModel.js";
@@ -71,5 +72,22 @@ export const getAllRooms = async (req, res) => {
   } catch (error) {
     console.error("Error fetching hotels:", error);
     res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+
+export const getRoomsGroupedByType = async (req, res) => {
+  try {
+    const { hotelId } = req.params;
+
+    const grouped = await Rooms.aggregate([
+      { $match: { hotelId: new mongoose.Types.ObjectId(hotelId) } },
+      { $group: { _id: "$type", rooms: { $push: "$$ROOT" } } },
+      { $project: { _id: 0, type: "$_id", rooms: 1 } }
+    ]);
+
+    res.json({ success: true, data: grouped });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 };
