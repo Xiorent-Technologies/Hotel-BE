@@ -76,3 +76,17 @@ export const getAllHotels = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+export const getRandom = async(req,res) => {
+  try {
+    const hotels = await Hotel.aggregate([
+      { $match: { status: "approved" } }, 
+      { $sample: { size: 4 } }
+    ]);
+
+    res.status(200).json(hotels);
+  } catch (error) {
+    console.error("Error fetching random hotels:", error);
+    res.status(500).json({ message: "Failed to fetch random hotels." });
+  }
+}

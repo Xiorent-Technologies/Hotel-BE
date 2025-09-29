@@ -40,7 +40,7 @@ export const bookRoom = async (req, res) => {
       roomsRequested = 1 // Default to 1 if not provided
     } = req.body;
 
-    if (!userId || !hotelId || !roomId || !checkIn || !checkOut || !adults || !guestDetails) {
+    if (!userId || !hotelId || !checkIn || !checkOut || !adults || !guestDetails) {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({ message: 'Missing required booking information' });

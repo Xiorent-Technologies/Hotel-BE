@@ -23,7 +23,23 @@ vendorId: {
     email: String,
     website: String
   },
-  amenities: [String],
+  amenities: {
+    type: [String],
+    enum: [
+      "Free Wi-Fi",
+      "Swimming Pool",
+      "Air Conditioning",
+      "Ocean View Balcony",
+      "Gym",
+      "Hot Tub",
+      "Spa",
+      "Restaurant",
+      "Bar",
+      "All Inclusive meals",
+      "Parking",
+    ],
+    default: []
+  },
   policies: {
     checkInTime: String,
     checkOutTime: String,

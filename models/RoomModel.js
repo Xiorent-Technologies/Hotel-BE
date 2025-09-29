@@ -6,11 +6,30 @@ const roomSchema = new mongoose.Schema({
     ref: 'Hotel',
     required: true
   },
-  type: {
-    type: String,
-    enum: ['single', 'double', 'suite', 'family', 'deluxe'],
-    required: true
-  },
+ type: {
+  type: String,
+  enum: [
+    "single",
+    "double",
+    "deluxe",
+    "family",
+    "Apartments",
+    "Guest Houses",
+    "Home Stays",
+    "Hostels",
+    "Boats",
+    "Bed and Breakfast",
+    "Holiday Homes",
+    "Villas",
+    "Cottages",
+    "Chalets",
+    "Farm Stays",
+    "Resorts",
+    "Timeshares",
+    "Luxury Suites"
+  ],
+  required: true
+},
   description: String,
   capacity: {
     adults: { type: Number, required: true },
@@ -25,7 +44,24 @@ const roomSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  amenities: [String],
+amenities: {
+    type: [String],
+    enum: [
+      "Free Wi-Fi",
+      "Swimming Pool",
+      "Air Conditioning",
+      "Ocean View Balcony",
+      "Gym",
+      "Hot Tub",
+      "Spa",
+      "Restaurant",
+      "Private Pool",
+      "Bar",
+      "All Inclusive meals",
+      "Parking",
+    ],
+    default: []
+  },
   images: [String],
   cancellationRules: {
     freeCancellationHours: { type: Number, default: 24 },
