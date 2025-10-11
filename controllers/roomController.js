@@ -147,18 +147,139 @@ export const getRoomDetails = async(req,res) => {
   }
 }
 
+
+
+export const getHotelRooms = async (req, res) => {
+  try {
+    const { hotelId } = req.params;
+    const { minPrice, maxPrice, amenities } = req.query;
+
+    if (!hotelId) {
+      return res.status(400).json({ message: "Hotel ID is required" });
+    }
+
+    // Build the filter object dynamically
+    const filter = { hotelId, isActive: true };
+
+    // Price filter - FIXED: Handle string to number conversion
+    if (minPrice !== undefined || maxPrice !== undefined) {
+      filter.basePrice = {};
+      if (minPrice !== undefined) {
+        filter.basePrice.$gte = Number(minPrice);
+      }
+      if (maxPrice !== undefined) {
+        filter.basePrice.$lte = Number(maxPrice);
+      }
+    }
+
+    // Amenities filter - FIXED: Handle $all for matching ALL amenities
+    if (amenities) {
+      let amenitiesArray = [];
+      if (typeof amenities === "string") {
+        amenitiesArray = [amenities];
+      } else if (Array.isArray(amenities)) {
+        amenitiesArray = amenities;
+      }
+      
+      // Use $all instead of $in if you want rooms with ALL selected amenities
+      // Use $in if you want rooms with ANY of the selected amenities
+      filter.amenities = { $all: amenitiesArray };
+      // OR: filter.amenities = { $in: amenitiesArray };
+    }
+
+
+    // Fetch rooms with filters
+    const rooms = await Rooms.find(filter).populate(
+      "hotelId",
+      "_id name location rating description"
+    );
+
+
+    if (!rooms || rooms.length === 0) {
+      return res.status(404).json({ 
+        success: true, 
+        message: "No rooms found matching filters",
+        rooms: []
+      });
+    }
+
+    return res.status(200).json({ success: true, rooms });
+  } catch (error) {
+    console.error("Error fetching rooms:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+
+
 export const getRoomsGroupedByType = async (req, res) => {
   try {
     const { hotelId } = req.params;
 
     const grouped = await Rooms.aggregate([
       { $match: { hotelId: new mongoose.Types.ObjectId(hotelId) } },
-      { $group: { _id: "$type", rooms: { $push: "$$ROOT" } } },
-      { $project: { _id: 0, type: "$_id", rooms: 1 } }
+      {
+        $group: {
+          _id: { type: "$type", hotelId: "$hotelId" },
+          rooms: { $push: "$$ROOT" }
+        }
+      },
+      {
+        $lookup: {
+          from: "hotels",               // 👈 collection name of Hotel model
+          localField: "_id.hotelId",    // hotelId from group
+          foreignField: "_id",          // hotel _id
+          as: "hotel"
+        }
+      },
+      { $unwind: "$hotel" }, // because we only expect one hotel
+      {
+        $project: {
+          _id: 0,
+          type: "$_id.type",
+          hotel: 1,
+          rooms: 1
+        }
+      }
     ]);
 
     res.json({ success: true, data: grouped });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+
+
+export const vendorRooms = async (req, res) => {
+  try {
+    const hotels = await Hotel.find({ vendorId: req.user._id });
+
+    if (!hotels || hotels.length === 0) {
+      return res.status(404).json({ message: "No hotels found for this vendor" });
+    }
+
+    const hotelIds = hotels.map((hotel) => hotel._id);
+
+    const rooms = await Rooms.find({ hotelId: { $in: hotelIds } });
+
+    if (!rooms || rooms.length === 0) {
+      return res.status(404).json({ message: "No rooms found for these hotels" });
+    }
+
+    // Step 4: Calculate the total number of rooms
+    const totalRooms = rooms.reduce((sum, room) => sum + (room.totalRooms || 0), 0);
+
+    // Step 5: Send response
+    return res.status(200).json({
+      message: "Vendor rooms fetched successfully",
+      hotelsCount: hotels.length,
+      roomsCount: rooms.length,
+      totalRooms,
+      rooms,
+    });
+  } catch (error) {
+    console.error("Error fetching vendor rooms:", error);
+    return res.status(500).json({ message: "Internal server error" });
   }
 };

@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 const roomAvailabilitySchema = new mongoose.Schema({
   roomId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Room',
+    ref: 'Rooms',
     required: true
   },
   hotelId: {

@@ -29,30 +29,30 @@ export const bookRoom = async (req, res) => {
   session.startTransaction();
   try {
     const {
-      userId,
       hotelId,
       roomId,
       checkIn,
       checkOut,
       adults,
       children,
-      guestDetails,
+      guestDetails, // includes firstName, lastName, email, phone, address, idProof, specialRequests
       roomsRequested = 1 // Default to 1 if not provided
     } = req.body;
 
-    if (!userId || !hotelId || !checkIn || !checkOut || !adults || !guestDetails) {
+    // ✅ Updated validation (no userId required anymore)
+    if (!hotelId || !roomId || !checkIn || !checkOut || !adults || !guestDetails?.firstName || !guestDetails?.email || !guestDetails?.phone) {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({ message: 'Missing required booking information' });
     }
 
-    // Normalize check-in and check-out dates to avoid timezone issues
+    // Normalize check-in and check-out dates
     const checkInDate = new Date(checkIn);
     checkInDate.setHours(0, 0, 0, 0);
-    
+
     const checkOutDate = new Date(checkOut);
     checkOutDate.setHours(0, 0, 0, 0);
-    
+
     // Validate dates
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -65,6 +65,7 @@ export const bookRoom = async (req, res) => {
 
     console.log('Booking request - Check-in:', checkInDate.toDateString(), 'Check-out:', checkOutDate.toDateString());
 
+    // Find room
     const room = await Rooms.findById(roomId).session(session);
     if (!room || !room.isActive) {
       await session.abortTransaction();
@@ -83,16 +84,11 @@ export const bookRoom = async (req, res) => {
 
     const datesToCheck = getDateRange(checkInDate, checkOutDate);
 
-    // Create availability records for dates that don't exist
-    console.log('Processing dates for availability:', datesToCheck.map(d => d.toDateString()));
-    
-    const availabilityPromises = datesToCheck.map(async (date, index) => {
-      // Use the date directly without additional normalization
+    // Ensure availability exists for each date
+    const availabilityPromises = datesToCheck.map(async (date) => {
       const dateToUse = new Date(date);
       dateToUse.setHours(0, 0, 0, 0);
-      
-      console.log(`Processing date ${index + 1}:`, date.toDateString(), '-> Using:', dateToUse.toDateString());
-      
+
       let availability = await RoomAvailability.findOne({
         roomId,
         hotelId,
@@ -103,8 +99,6 @@ export const bookRoom = async (req, res) => {
       }).session(session);
 
       if (!availability) {
-        console.log('Creating new availability for:', dateToUse.toDateString());
-        // Create new availability record
         availability = await RoomAvailability.create([{
           roomId,
           hotelId,
@@ -113,11 +107,8 @@ export const bookRoom = async (req, res) => {
           availableRooms: room.totalRooms,
           price: room.basePrice
         }], { session });
-        return availability[0]; // create() returns an array
-      } else {
-        console.log('Found existing availability for:', dateToUse.toDateString(), 'Available rooms:', availability.availableRooms);
+        return availability[0];
       }
-      
       return availability;
     });
 
@@ -125,11 +116,11 @@ export const bookRoom = async (req, res) => {
 
     // Validate availability and calculate price
     let totalBasePrice = 0;
-    
+
     for (let i = 0; i < availabilityRecords.length; i++) {
       const availability = availabilityRecords[i];
       const currentDate = datesToCheck[i];
-      
+
       if (!availability || availability.status === 'sold_out' || availability.availableRooms < roomsRequested) {
         await session.abortTransaction();
         session.endSession();
@@ -138,7 +129,7 @@ export const bookRoom = async (req, res) => {
           message: `Not enough rooms available on ${currentDate.toDateString()}. Available: ${availability?.availableRooms || 0}, Requested: ${roomsRequested}`
         });
       }
-      
+
       totalBasePrice += (availability.price || room.basePrice) * roomsRequested;
     }
 
@@ -146,9 +137,8 @@ export const bookRoom = async (req, res) => {
     const finalAmount = totalBasePrice + taxAmount;
     const nights = datesToCheck.length;
 
-    // Create the booking
+    // ✅ Create the booking (no userId, store guest info directly)
     const newBooking = await Bookings.create([{
-      userId,
       hotelId,
       roomId,
       dates: {
@@ -158,10 +148,14 @@ export const bookRoom = async (req, res) => {
       guests: {
         adults,
         children,
-        details: req.body.guestDetails?.details || []
+        details: req.body.guests?.details || [] // optional details about additional guests
       },
       guestDetails: {
-        primaryGuest: guestDetails.primaryGuest,
+        firstName: guestDetails.firstName,
+        lastName: guestDetails.lastName,
+        email: guestDetails.email,
+        phone: guestDetails.phone,
+        address: guestDetails.address,
         idProof: guestDetails.idProof,
         specialRequests: guestDetails.specialRequests
       },
@@ -177,13 +171,10 @@ export const bookRoom = async (req, res) => {
       roomsBooked: roomsRequested
     }], { session });
 
-    // Update room availability for each date
-    console.log('Updating availability for dates:', availabilityRecords.map((avail, i) => `${datesToCheck[i].toDateString()}: ${avail.availableRooms} -> ${avail.availableRooms - roomsRequested}`));
-    
-    const updatePromises = availabilityRecords.map(async (availability, index) => {
+    // Update room availability
+    const updatePromises = availabilityRecords.map(async (availability) => {
       const newAvailableRooms = availability.availableRooms - roomsRequested;
-      console.log(`Updating availability for ${datesToCheck[index].toDateString()}: ${availability.availableRooms} - ${roomsRequested} = ${newAvailableRooms}`);
-      
+
       return await RoomAvailability.findByIdAndUpdate(
         availability._id,
         {
@@ -226,32 +217,174 @@ export const bookRoom = async (req, res) => {
     await session.abortTransaction();
     session.endSession();
     console.error('Booking error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: "Booking failed", 
-      error: error.message 
+    res.status(500).json({
+      success: false,
+      message: "Booking failed",
+      error: error.message
     });
   }
 };
 
-export const getAllBookings = async(req,res) => {
-    try {
-        const {hotelId} = req.params;
+
+export const getAllBookings = async (req, res) => {
+  try {
+    const { hotelId } = req.params;
+    const { roomId, paymentStatus } = req.query;
 
     const hotel = await Hotel.findById(hotelId);
-    if(!hotel){
-        return res.status(404).json({message : "hotel not found"});
+    if (!hotel) {
+      return res.status(404).json({ message: "Hotel not found" });
     }
 
-    const bookings = await Bookings.find({ hotelId }).lean();
-    if(bookings.length === 0){
-        return res.status(404).json({message : "booking not found"});
+    // build a dynamic query
+    const filter = { hotelId };
+    if (roomId) {
+      filter.roomId = roomId;
+    }
+    if (paymentStatus) {
+      filter.paymentStatus = paymentStatus;
+    }
+
+    const bookings = await Bookings.find(filter).lean();
+
+    if (bookings.length === 0) {
+      return res.status(404).json({ message: "No bookings found" });
     }
 
     return res.status(200).json(bookings);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Fetching failed",
+      error: error.message,
+    });
+  }
+};
 
-    } catch (error) {
-        res.status(500).json({ success: false, message: "fetching failed", error: error.message });
+
+export const confirmation = async(req,res) => {
+  try {
+    const {bookingId} = req.params;
+    const booking  = await Bookings.findById(bookingId).populate("hotelId","name location amenities description rating");
+    if(!booking){
+      return res.status(404).json({message : "booking not found"});
     }
 
+    return res.status(200).json(booking);
+
+  } catch (error) {
+    res.status(500).json({ success: false, message: "fetching failed", error: error.message });
+  }
 }
+
+export const vendorEarnings = async(req,res)=>{
+  try {
+    const hotels = await Hotel.find({ vendorId: req.user._id });
+
+    if (!hotels || hotels.length === 0) {
+      return res.status(404).json({ message: "No hotels found for this vendor" });
+    }
+
+    const hotelIds = hotels.map((hotel) => hotel._id);
+
+    const bookings = await Bookings.find({ hotelId: { $in: hotelIds } })
+
+    if (!bookings || bookings.length === 0) {
+      return res.status(404).json({ message: "No bookings done for this vendor" });
+    }
+
+    const totalEarnings = bookings.reduce((sum, book) => sum + (book.pricing.totalAmount || 0), 0);
+
+ return res.status(200).json({
+      message: "Vendor earnings calculated successfully",
+      vendorId: req.user._id,
+      bookingsCount: bookings.length,
+      totalEarnings,
+    });
+  } catch (error) {
+    console.error("Error fetching vendor bookings:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+export const getMonthlyBookings = async (req, res) => {
+  try {
+    const year = new Date().getFullYear();
+
+    const monthlyData = await Bookings.aggregate([
+      {
+        $match: {
+          createdAt: {
+            $gte: new Date(`${year}-01-01`),
+            $lt: new Date(`${year + 1}-01-01`)
+          }
+        }
+      },
+      {
+        // Group by month
+        $group: {
+          _id: { $month: "$createdAt" },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        // Sort by month ascending
+        $sort: { "_id": 1 }
+      }
+    ]);
+
+    // Map month numbers to names
+    const monthNames = [
+      "Jan", "Feb", "Mar", "Apr", "May", "June",
+      "July", "Aug", "Sep", "Oct", "Nov", "Dec"
+    ];
+
+    const formattedData = monthNames.map((name, index) => ({
+      month: name,
+      count:
+        monthlyData.find(item => item._id === index + 1)?.count || 0
+    }));
+
+    return res.status(200).json({
+      success: true,
+      year,
+      data: formattedData
+    });
+  } catch (error) {
+    console.error("Error fetching monthly bookings:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get monthly booking data"
+    });
+  }
+};
+
+
+export const totalBookings = async (req, res) => {
+  try {
+    // Aggregate total sum of all booking amounts
+    const result = await Bookings.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalAmount: { $sum: "$pricing.totalAmount" },
+        },
+      },
+    ]);
+
+    const totalAmount = result.length > 0 ? result[0].totalAmount : 0;
+
+    return res.status(200).json({
+      success: true,
+      totalAmount,
+    });
+
+  } catch (error) {
+    console.error("Error calculating total booking amount:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};

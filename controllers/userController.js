@@ -1,3 +1,4 @@
+import cloudinary from "../config/cloudinary.js";
 import { generateTokenAndSetCookie } from "../cookie/generateTokenAndSetCookie.js";
 import User from "../models/userModel.js";
 import bcrypt from "bcryptjs";
@@ -84,18 +85,77 @@ export const logOut = async(req,res) => {
 export const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
+    const { name, email, role, bio, username, phone, image } = req.body;
 
-    const updatedUser = await User.findByIdAndUpdate(id, req.body, {
-      new: true,          
-      runValidators: true 
-    });
-
-    if (!updatedUser) {
+    // 🔹 Check if user exists
+    const user = await User.findById(id);
+    if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    res.status(200).json({ success: true, data: updatedUser });
+    // 🔹 Default image URL (keep existing)
+    let imageUrl = user.image;
+
+    // 🔹 If new image (base64), upload to Cloudinary
+    if (image && image.startsWith("data:image")) {
+      const uploadResponse = await cloudinary.uploader.upload(image, {
+        folder: "user_profiles",
+      });
+      imageUrl = uploadResponse.secure_url;
+    }
+
+    // 🔹 Update only provided fields
+    user.name = name || user.name;
+    user.email = email || user.email;
+    user.role = role || user.role;
+    user.bio = bio || user.bio;
+    user.username = username || user.username;
+    user.phone = phone || user.phone;
+    user.image = imageUrl;
+    // user.loginActivity=loginActivity,
+    // user.loginDevices=activeDevices,
+
+    const updatedUser = await user.save();
+
+    // 🔹 Return updated payload
+    const payload = {
+      id: updatedUser._id,
+      name: updatedUser.name,
+      email: updatedUser.email,
+      role: updatedUser.role,
+      bio: updatedUser.bio,
+      username: updatedUser.username,
+      phone: updatedUser.phone,
+      image: updatedUser.image,
+      lastLogin: updatedUser.lastLogin,   // 🟢 add this
+      devices: updatedUser.lastLoginDevice,
+    };
+       
+
+    res.status(200).json({ success: true, data: payload });
   } catch (err) {
+    console.error("Update user error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
+export const getUser = async(req,res) => {
+    try {
+        const user = await User.findById(req.user._id);
+        if (!user) return res.status(404).json({message : "user not found"});
+
+        return res.status(200).json(user);
+    } catch (error) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+}
+
+export const getVendors = async(req,res) => {
+    try {
+        const vendors = await User.find({role : "vendor"});
+        return res.status(200).json(vendors);
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+}

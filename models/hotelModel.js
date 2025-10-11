@@ -66,10 +66,20 @@ vendorId: {
     average: { type: Number, default: 0 },
     totalReviews: { type: Number, default: 0 }
   },
+  reviews: [
+    {
+      name: { type: String, required: true },       
+      email: { type: String },                       
+      rating: { type: Number, min: 1, max: 5, required: true },
+      comment: { type: String },
+      createdAt: { type: Date, default: Date.now }
+    }
+  ],
   paymentOptions: {
     payAtHotel: { type: Boolean, default: false },
     onlinePayment: { type: Boolean, default: true }
-  }
+  },
+
 },{
   timestamps: true
 })
