@@ -23,7 +23,7 @@ app.use(cookieParser());
 
 const allowedOrigins = [
   "https://hotelfei.vercel.app",
-  "http://localhost:5173", // for local development
+  "https://hotel-vendor.vercel.app", // for local development
 ];
 
 app.use(
